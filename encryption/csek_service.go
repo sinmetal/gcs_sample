@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 
 	"cloud.google.com/go/storage"
+	"github.com/sinmetal/gcs_sample/internal/trace"
 	"google.golang.org/api/cloudkms/v1"
 )
 
@@ -26,6 +27,9 @@ func NewCSEKService(ctx context.Context, gcs *storage.Client, kms *cloudkms.Serv
 // Encrypt is 指定したCloud KMSの鍵で暗号化する
 // keyName format: "projects/%s/locations/%s/keyRings/%s/cryptoKeys/%s
 func (s *CSEKService) Encrypt(ctx context.Context, keyName string, plaintext string) (ciphertext string, cryptoKey string, err error) {
+	ctx = trace.StartSpan(ctx, "encryption/csek/encrypt")
+	defer trace.EndSpan(ctx, err)
+
 	response, err := s.kms.Projects.Locations.KeyRings.CryptoKeys.Encrypt(keyName, &cloudkms.EncryptRequest{
 		Plaintext: plaintext,
 	}).Do()
@@ -37,6 +41,9 @@ func (s *CSEKService) Encrypt(ctx context.Context, keyName string, plaintext str
 }
 
 func (s *CSEKService) Decrypt(ctx context.Context, keyName string, ciphertext string) (plaintext string, err error) {
+	ctx = trace.StartSpan(ctx, "encryption/csek/decrypt")
+	defer trace.EndSpan(ctx, err)
+
 	response, err := s.kms.Projects.Locations.KeyRings.CryptoKeys.Decrypt(keyName, &cloudkms.DecryptRequest{
 		Ciphertext: ciphertext,
 	}).Do()
@@ -53,7 +60,10 @@ func (s *CSEKService) Decrypt(ctx context.Context, keyName string, ciphertext st
 //
 // keyName format: "projects/%s/locations/%s/keyRings/%s/cryptoKeys/%s
 // encryptionKey: 256 bit (32 byte) AES encryption key
-func (s *CSEKService) Upload(ctx context.Context, keyName string, bucketName string, objectName string, encryptionKey []byte, file []byte) (int, error) {
+func (s *CSEKService) Upload(ctx context.Context, keyName string, bucketName string, objectName string, encryptionKey []byte, file []byte) (size int, err error) {
+	ctx = trace.StartSpan(ctx, "encryption/csek/upload")
+	defer trace.EndSpan(ctx, err)
+
 	obj := s.gcs.Bucket(bucketName).Object(objectName).Key(encryptionKey)
 	w := obj.NewWriter(ctx)
 
@@ -67,7 +77,7 @@ func (s *CSEKService) Upload(ctx context.Context, keyName string, bucketName str
 	metadata["wDEK"] = chiphertext
 	metadata["cryptKey"] = cryptKey
 	w.Metadata = metadata
-	size, err := w.Write(file)
+	size, err = w.Write(file)
 	if err != nil {
 		return 0, fmt.Errorf("failed gcs.write: %w", err)
 	}
@@ -83,7 +93,10 @@ func (s *CSEKService) Upload(ctx context.Context, keyName string, bucketName str
 // ダウンロードする時にcustomer-supplied encryption keyとして、Object.Metadata[wDEK]から取得した値をkeyNameで指定されたCloud KMS Keyで復号化して利用する
 //
 // keyName format: "projects/%s/locations/%s/keyRings/%s/cryptoKeys/%s
-func (s *CSEKService) Download(ctx context.Context, keyName string, bucketName string, objectName string) ([]byte, error) {
+func (s *CSEKService) Download(ctx context.Context, keyName string, bucketName string, objectName string) (data []byte, err error) {
+	ctx = trace.StartSpan(ctx, "encryption/csek/download")
+	defer trace.EndSpan(ctx, err)
+
 	obj := s.gcs.Bucket(bucketName).Object(objectName)
 	attrs, err := obj.Attrs(ctx)
 	encryptedSecretKey := attrs.Metadata["wDEK"]
@@ -110,7 +123,7 @@ func (s *CSEKService) Download(ctx context.Context, keyName string, bucketName s
 		}
 	}()
 
-	data, err := ioutil.ReadAll(rc)
+	data, err = ioutil.ReadAll(rc)
 	if err != nil {
 		return nil, fmt.Errorf("failed object.Read: %w", err)
 	}

@@ -8,8 +8,11 @@ import (
 	"os"
 
 	"cloud.google.com/go/storage"
+	"contrib.go.opencensus.io/exporter/stackdriver"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/sinmetal/gcs_sample/encryption"
+	metadatabox "github.com/sinmetalcraft/gcpbox/metadata"
+	"go.opencensus.io/trace"
 	"google.golang.org/api/cloudkms/v1"
 )
 
@@ -34,8 +37,24 @@ func main() {
 	log.Print("starting server...")
 	http.HandleFunc("/", helloHandler)
 
+	projectID, err := metadatabox.ProjectID()
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	if metadatabox.OnGCP() {
+		// Create and register a OpenCensus Stackdriver Trace exporter.
+		exporter, err := stackdriver.NewExporter(stackdriver.Options{
+			ProjectID: projectID,
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		trace.RegisterExporter(exporter)
+	}
+
 	var cfg Config
-	err := envconfig.Process("SINMETAL", &cfg)
+	err = envconfig.Process("SINMETAL", &cfg)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
