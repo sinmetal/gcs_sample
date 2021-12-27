@@ -50,3 +50,21 @@ func (handlers *Handlers) UploadCSEKHandler(w http.ResponseWriter, r *http.Reque
 		fmt.Printf("warn write response. %s", err)
 	}
 }
+
+func (handlers *Handlers) CopyCSEKHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	object := r.FormValue("object")
+
+	if err := handlers.CSEKService.Copy(ctx, handlers.Config.CSEKEncryptBucket2(), handlers.Config.CSEKEncryptBucket1(), object, handlers.Config.CloudKMSKeyName); err != nil {
+		fmt.Printf("failed copy object: kmsKey=%s, object=%s: %s\n", handlers.Config.CloudKMSKeyName, object, err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, err := w.Write([]byte("finish."))
+	if err != nil {
+		fmt.Printf("warn write response. %s", err)
+	}
+}

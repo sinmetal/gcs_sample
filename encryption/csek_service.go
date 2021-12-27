@@ -75,7 +75,7 @@ func (s *CSEKService) Upload(ctx context.Context, keyName string, bucketName str
 
 	metadata := map[string]string{}
 	metadata["wDEK"] = chiphertext
-	metadata["cryptKey"] = cryptKey
+	metadata["cryptKey"] = cryptKey // keyVersionを保持するために入れる
 	w.Metadata = metadata
 	size, err = w.Write(file)
 	if err != nil {
@@ -99,6 +99,9 @@ func (s *CSEKService) Download(ctx context.Context, keyName string, bucketName s
 
 	obj := s.gcs.Bucket(bucketName).Object(objectName)
 	attrs, err := obj.Attrs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed read object.Attrs: %w", err)
+	}
 	encryptedSecretKey := attrs.Metadata["wDEK"]
 	if len(encryptedSecretKey) < 1 {
 		return nil, fmt.Errorf("not found encryptedSecretKey from object.Metadata[wDEK]")
@@ -128,4 +131,41 @@ func (s *CSEKService) Download(ctx context.Context, keyName string, bucketName s
 		return nil, fmt.Errorf("failed object.Read: %w", err)
 	}
 	return data, nil
+}
+
+// Copy is src側,dst側それぞれにCSEKを渡して、向こうでCopyしてもらう
+func (s *CSEKService) Copy(ctx context.Context, dstBucket string, srcBucket string, objectName string, keyName string) (err error) {
+	ctx = trace.StartSpan(ctx, "encryption/csek/copy")
+	defer trace.EndSpan(ctx, err)
+
+	obj := s.gcs.Bucket(srcBucket).Object(objectName)
+	attrs, err := obj.Attrs(ctx)
+	if err != nil {
+		return fmt.Errorf("failed read object.Attrs: %w", err)
+	}
+	encryptedSecretKey := attrs.Metadata["wDEK"]
+	if len(encryptedSecretKey) < 1 {
+		return fmt.Errorf("not found encryptedSecretKey from object.Metadata[wDEK]")
+	}
+
+	plainttext, err := s.Decrypt(ctx, keyName, encryptedSecretKey)
+	if err != nil {
+		return fmt.Errorf("failed decrpyt encryptedSecretKey: %w", err)
+	}
+	secretKey, err := base64.StdEncoding.DecodeString(plainttext)
+	if err != nil {
+		return fmt.Errorf("failed base64.Decode encryptedSecretKey: %w", err)
+	}
+
+	src := obj.Key(secretKey)
+	copier := s.gcs.Bucket(dstBucket).Object(objectName).Key(secretKey).CopierFrom(src)
+	metadata := map[string]string{}
+	metadata["wDEK"] = encryptedSecretKey
+	metadata["cryptKey"] = keyName // keyVersionを保持するために入れる
+	copier.Metadata = metadata
+	_, err = copier.Run(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
 }
