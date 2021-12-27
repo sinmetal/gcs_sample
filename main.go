@@ -50,6 +50,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		trace.AlwaysSample()
 		trace.RegisterExporter(exporter)
 	}
 
