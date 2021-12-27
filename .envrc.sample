@@ -1,0 +1,2 @@
+export CLOUDKMS_KEY=projects/sinmetal-playground-20211225/locations/asia-northeast1/keyRings/gcs/cryptoKeys/sample
+export BUCKET_NAME=sinmetal-playground-20211225
