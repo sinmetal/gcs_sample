@@ -99,7 +99,7 @@ func main() {
 	http.HandleFunc("/encryption/csek/copy", handlers.CopyCSEKHandler)
 
 	http.HandleFunc("/encryption/cmek/upload", handlers.UploadCMEKHandler)
-	http.HandleFunc("/encryption/cmek/re-encrypt", handlers.ReEncryptHandler)
+	http.HandleFunc("/encryption/cmek/re-encrypt", handlers.ReEncryptCMEKHandler)
 
 	// Determine port for HTTP service.
 	port := os.Getenv("PORT")

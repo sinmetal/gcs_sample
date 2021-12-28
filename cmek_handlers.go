@@ -41,7 +41,7 @@ func (handlers *Handlers) UploadCMEKHandler(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (handlers *Handlers) ReEncryptHandler(w http.ResponseWriter, r *http.Request) {
+func (handlers *Handlers) ReEncryptCMEKHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	object := r.FormValue("object")
