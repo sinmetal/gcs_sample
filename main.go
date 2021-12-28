@@ -17,7 +17,11 @@ import (
 )
 
 type Config struct {
-	BaseBucket      string
+	// BaseBucket is 適当に扱うファイルを置いておくBucket
+	BaseBucket string
+
+	// CloudKMSKeyName is CSEKで扱うCloud KMS Key Name
+	// format: projects/%s/locations/%s/keyRings/%s/cryptoKeys/%s
 	CloudKMSKeyName string
 }
 
@@ -29,6 +33,11 @@ func (c *Config) CSEKEncryptBucket1() string {
 // CSEKEncryptBucket2 is CSEKEncryptBucket1からCopyしたファイルを置くBucket
 func (c *Config) CSEKEncryptBucket2() string {
 	return fmt.Sprintf("%s-encrypt2", c.BaseBucket)
+}
+
+// CMEKEncryptBucket is Default Keyを指定したBucket
+func (c *Config) CMEKEncryptBucket() string {
+	return fmt.Sprintf("%s-cmek-encrypt", c.BaseBucket)
 }
 
 func main() {
@@ -59,6 +68,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+	fmt.Printf("BaseBucketName:%s\n", cfg.BaseBucket)
+	fmt.Printf("CloudKMSKeyName:%s\n", cfg.CloudKMSKeyName)
 
 	gcs, err := storage.NewClient(ctx)
 	if err != nil {
@@ -73,14 +84,22 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+	cmekService, err := encryption.NewCMEKService(ctx, gcs)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 
 	handlers := Handlers{
 		Config:      &cfg,
 		GCS:         gcs,
 		CSEKService: csekService,
+		CMEKService: cmekService,
 	}
 	http.HandleFunc("/encryption/csek/upload", handlers.UploadCSEKHandler)
 	http.HandleFunc("/encryption/csek/copy", handlers.CopyCSEKHandler)
+
+	http.HandleFunc("/encryption/cmek/upload", handlers.UploadCMEKHandler)
+	http.HandleFunc("/encryption/cmek/re-encrypt", handlers.ReEncryptHandler)
 
 	// Determine port for HTTP service.
 	port := os.Getenv("PORT")

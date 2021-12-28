@@ -9,4 +9,5 @@ type Handlers struct {
 	Config      *Config
 	GCS         *storage.Client
 	CSEKService *encryption.CSEKService
+	CMEKService *encryption.CMEKService
 }
