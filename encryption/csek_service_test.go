@@ -21,7 +21,7 @@ func TestCSEKService_Download(t *testing.T) {
 	keyName := os.Getenv("CLOUDKMS_KEY")
 	bucketName := os.Getenv("BUCKET_NAME")
 	object := uuid.New().String()
-	encryptionKey, err := encryption.GenerateEncryptionKey()
+	encryptionKey, err := encryption.GenerateEncryptionKey(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestCSEKService_Download(t *testing.T) {
 		t.Fatal("Upload size is Zero")
 	}
 
-	got, err := s.Download(ctx, keyName, bucketName, object)
+	got, _, err := s.Download(ctx, keyName, bucketName, object)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestCSEKService_Copy(t *testing.T) {
 	keyName := os.Getenv("CLOUDKMS_KEY")
 	bucketName := os.Getenv("BUCKET_NAME")
 	object := uuid.New().String()
-	encryptionKey, err := encryption.GenerateEncryptionKey()
+	encryptionKey, err := encryption.GenerateEncryptionKey(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

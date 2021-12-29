@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"io/ioutil"
 
 	"cloud.google.com/go/storage"
@@ -93,32 +94,13 @@ func (s *CSEKService) Upload(ctx context.Context, keyName string, bucketName str
 // ダウンロードする時にcustomer-supplied encryption keyとして、Object.Metadata[wDEK]から取得した値をkeyNameで指定されたCloud KMS Keyで復号化して利用する
 //
 // keyName format: "projects/%s/locations/%s/keyRings/%s/cryptoKeys/%s
-func (s *CSEKService) Download(ctx context.Context, keyName string, bucketName string, objectName string) (data []byte, err error) {
+func (s *CSEKService) Download(ctx context.Context, keyName string, bucketName string, objectName string) (data []byte, attrs *storage.ObjectAttrs, err error) {
 	ctx = trace.StartSpan(ctx, "encryption/csek/download")
 	defer trace.EndSpan(ctx, err)
 
-	obj := s.gcs.Bucket(bucketName).Object(objectName)
-	attrs, err := obj.Attrs(ctx)
+	rc, attrs, err := s.NewDownloader(ctx, keyName, bucketName, objectName)
 	if err != nil {
-		return nil, fmt.Errorf("failed read object.Attrs: %w", err)
-	}
-	encryptedSecretKey := attrs.Metadata["wDEK"]
-	if len(encryptedSecretKey) < 1 {
-		return nil, fmt.Errorf("not found encryptedSecretKey from object.Metadata[wDEK]")
-	}
-
-	plainttext, err := s.Decrypt(ctx, keyName, encryptedSecretKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed decrpyt encryptedSecretKey: %w", err)
-	}
-	secretKey, err := base64.StdEncoding.DecodeString(plainttext)
-	if err != nil {
-		return nil, fmt.Errorf("failed base64.Decode encryptedSecretKey: %w", err)
-	}
-
-	rc, err := obj.Key(secretKey).NewReader(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed object.NewReader: %w", err)
+		return nil, nil, fmt.Errorf("failed object.NewReader: %w", err)
 	}
 	defer func() {
 		if err := rc.Close(); err != nil {
@@ -128,9 +110,40 @@ func (s *CSEKService) Download(ctx context.Context, keyName string, bucketName s
 
 	data, err = ioutil.ReadAll(rc)
 	if err != nil {
-		return nil, fmt.Errorf("failed object.Read: %w", err)
+		return nil, nil, fmt.Errorf("failed object.Read: %w", err)
 	}
-	return data, nil
+	return data, attrs, nil
+}
+
+func (s *CSEKService) NewDownloader(ctx context.Context, keyName string, bucketName string, objectName string) (w io.ReadCloser, attrs *storage.ObjectAttrs, err error) {
+	ctx = trace.StartSpan(ctx, "encryption/csek/newDownloader")
+	defer trace.EndSpan(ctx, err)
+
+	obj := s.gcs.Bucket(bucketName).Object(objectName)
+	attrs, err = obj.Attrs(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed read object.Attrs: %w", err)
+	}
+	encryptedSecretKey := attrs.Metadata["wDEK"]
+	if len(encryptedSecretKey) < 1 {
+		return nil, nil, fmt.Errorf("not found encryptedSecretKey from object.Metadata[wDEK]")
+	}
+
+	plainttext, err := s.Decrypt(ctx, keyName, encryptedSecretKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed decrpyt encryptedSecretKey: %w", err)
+	}
+	secretKey, err := base64.StdEncoding.DecodeString(plainttext)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed base64.Decode encryptedSecretKey: %w", err)
+	}
+
+	rc, err := obj.Key(secretKey).NewReader(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed object.NewReader: %w", err)
+	}
+
+	return rc, attrs, nil
 }
 
 // Copy is src側,dst側それぞれにCSEKを渡して、向こうでCopyしてもらう

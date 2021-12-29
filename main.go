@@ -59,8 +59,8 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		trace.AlwaysSample()
 		trace.RegisterExporter(exporter)
+		trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 	}
 
 	var cfg Config
@@ -96,9 +96,11 @@ func main() {
 		CMEKService: cmekService,
 	}
 	http.HandleFunc("/encryption/csek/upload", handlers.UploadCSEKHandler)
+	http.HandleFunc("/encryption/csek/download", handlers.DownloadCSEKHandler)
 	http.HandleFunc("/encryption/csek/copy", handlers.CopyCSEKHandler)
 
 	http.HandleFunc("/encryption/cmek/upload", handlers.UploadCMEKHandler)
+	http.HandleFunc("/encryption/cmek/download", handlers.DownloadCMEKHandler)
 	http.HandleFunc("/encryption/cmek/re-encrypt", handlers.ReEncryptCMEKHandler)
 
 	// Determine port for HTTP service.

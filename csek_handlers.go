@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 
@@ -31,7 +32,7 @@ func (handlers *Handlers) UploadCSEKHandler(w http.ResponseWriter, r *http.Reque
 		fmt.Printf("warn objectReader.Close: %s\n", err.Error())
 	}
 
-	encKey, err := encryption.GenerateEncryptionKey()
+	encKey, err := encryption.GenerateEncryptionKey(ctx)
 	if err != nil {
 		fmt.Printf("failed generate encryption: %s\n", err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -46,6 +47,25 @@ func (handlers *Handlers) UploadCSEKHandler(w http.ResponseWriter, r *http.Reque
 
 	w.WriteHeader(http.StatusOK)
 	_, err = w.Write([]byte(fmt.Sprintf("finish.\nsize=%d", size)))
+	if err != nil {
+		fmt.Printf("warn write response. %s", err)
+	}
+}
+
+func (handlers *Handlers) DownloadCSEKHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	object := r.FormValue("object")
+
+	reader, attrs, err := handlers.CSEKService.NewDownloader(ctx, handlers.Config.CloudKMSKeyName, handlers.Config.CSEKEncryptBucket1(), object)
+	if err != nil {
+		fmt.Printf("failed download fromt gcs: kmsKey=%s, object=%s: %s\n", handlers.Config.CloudKMSKeyName, object, err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", attrs.ContentType)
+	w.WriteHeader(http.StatusOK)
+	_, err = io.Copy(w, reader)
 	if err != nil {
 		fmt.Printf("warn write response. %s", err)
 	}

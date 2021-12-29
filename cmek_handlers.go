@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 )
@@ -36,6 +37,25 @@ func (handlers *Handlers) UploadCMEKHandler(w http.ResponseWriter, r *http.Reque
 
 	w.WriteHeader(http.StatusOK)
 	_, err = w.Write([]byte(fmt.Sprintf("finish.\nsize=%d", size)))
+	if err != nil {
+		fmt.Printf("warn write response. %s", err)
+	}
+}
+
+func (handlers *Handlers) DownloadCMEKHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	object := r.FormValue("object")
+
+	reader, attrs, err := handlers.CMEKService.NewDownloader(ctx, handlers.Config.CMEKEncryptBucket(), object)
+	if err != nil {
+		fmt.Printf("failed download fromt gcs: object=%s: %s\n", object, err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", attrs.ContentType)
+	w.WriteHeader(http.StatusOK)
+	_, err = io.Copy(w, reader)
 	if err != nil {
 		fmt.Printf("warn write response. %s", err)
 	}

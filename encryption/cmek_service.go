@@ -3,6 +3,7 @@ package encryption
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 
 	"cloud.google.com/go/storage"
@@ -42,16 +43,37 @@ func (s *CMEKService) Upload(ctx context.Context, bucketName string, objectName 
 	return size, nil
 }
 
-// Download is Cloud Storageからobjectをダウンロードする
-// CMEKとしてBucket Default Keyを指定しているので、コード上はただダウンロードしてるだけ
-func (s *CMEKService) Download(ctx context.Context, keyName string, bucketName string, objectName string) (data []byte, err error) {
-	ctx = trace.StartSpan(ctx, "encryption/cmek/download")
+// UploadWithKey is Cloud Storageに任意のCloud KMS Keyを利用して、fileをアップロードする
+// keyName format: "projects/%s/locations/%s/keyRings/%s/cryptoKeys/%s
+func (s *CMEKService) UploadWithKey(ctx context.Context, keyName string, bucketName string, objectName string, file []byte) (size int, err error) {
+	ctx = trace.StartSpan(ctx, "encryption/cmek/uploadWithKey")
 	defer trace.EndSpan(ctx, err)
 
 	obj := s.gcs.Bucket(bucketName).Object(objectName)
-	rc, err := obj.NewReader(ctx)
+	w := obj.NewWriter(ctx)
+	w.KMSKeyName = keyName
+
+	size, err = w.Write(file)
 	if err != nil {
-		return nil, fmt.Errorf("failed object.NewReader: %w", err)
+		return 0, fmt.Errorf("failed gcs.write: %w", err)
+	}
+
+	if err := w.Close(); err != nil {
+		return size, fmt.Errorf("file writer close error: %w", err)
+	}
+
+	return size, nil
+}
+
+// Download is Cloud Storageからobjectをダウンロードする
+// CMEKとしてBucket Default Keyを指定しているので、コード上はただダウンロードしてるだけ
+func (s *CMEKService) Download(ctx context.Context, bucketName string, objectName string) (data []byte, attrs *storage.ObjectAttrs, err error) {
+	ctx = trace.StartSpan(ctx, "encryption/cmek/download")
+	defer trace.EndSpan(ctx, err)
+
+	rc, attrs, err := s.NewDownloader(ctx, bucketName, objectName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed object.NewReader: %w", err)
 	}
 	defer func() {
 		if err := rc.Close(); err != nil {
@@ -61,9 +83,28 @@ func (s *CMEKService) Download(ctx context.Context, keyName string, bucketName s
 
 	data, err = ioutil.ReadAll(rc)
 	if err != nil {
-		return nil, fmt.Errorf("failed object.Read: %w", err)
+		return nil, nil, fmt.Errorf("failed object.Read: %w", err)
 	}
-	return data, nil
+	return data, attrs, nil
+}
+
+// Download is Cloud Storageからobjectをダウンロードする
+// CMEKとしてBucket Default Keyを指定しているので、コード上はただダウンロードしてるだけ
+func (s *CMEKService) NewDownloader(ctx context.Context, bucketName string, objectName string) (w io.ReadCloser, attrs *storage.ObjectAttrs, err error) {
+	ctx = trace.StartSpan(ctx, "encryption/cmek/newDownloader")
+	defer trace.EndSpan(ctx, err)
+
+	obj := s.gcs.Bucket(bucketName).Object(objectName)
+	attrs, err = obj.Attrs(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed read object.Attrs: %w", err)
+	}
+	rc, err := obj.NewReader(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed object.NewReader: %w", err)
+	}
+
+	return rc, attrs, nil
 }
 
 // ReEncrypt is KeyをRotateした後に、新しいKeyでEncryptし直す時に利用する
