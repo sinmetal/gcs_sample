@@ -1,0 +1,7 @@
+# for unit test
+export CLOUDKMS_KEY=projects/sinmetal-playground-20211225/locations/asia-northeast1/keyRings/gcs/cryptoKeys/sample
+export BUCKET_NAME=sinmetal-playground-20211225
+
+# for run
+export SINMETAL_BASEBUCKET=sinmetal-playground-20211225-big
+export SINMETAL_CLOUDKMSKEYNAME=projects/sinmetal-playground-20211225/locations/asia-northeast1/keyRings/gcs/cryptoKeys/sample
